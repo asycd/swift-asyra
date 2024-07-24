@@ -42,9 +42,9 @@ export async function POST(request: Request) {
 
 	  // Query the Upstash vector index
   	const queryResults = await index.query({
-    		vector: [/* your query vector */],
+    		data: transcript,
     		topK: 5,
-    		includeMetadata: true,
+    		includeVectors: true
   	});
 
   	// Enhance the prompt with additional context
