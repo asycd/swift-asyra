@@ -3,6 +3,12 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { zfd } from "zod-form-data";
 import { unstable_after as after } from "next/server";
+import { Index } from "@upstash/vector";
+
+const index = new Index({
+	url: "https://above-muskox-28433-us1-vector.upstash.io",
+  	token: "ABYFMGFib3ZlLW11c2tveC0yODQzMy11czFhZG1pblpqYzJPREE0TjJFdE5XSmxNQzAwTVRjM0xXSTJObVF0TnpneE1EY3pPVGhtT1RWaw==",
+});
 
 const groq = new Groq();
 
@@ -34,6 +40,20 @@ export async function POST(request: Request) {
 		"text completion " + request.headers.get("x-vercel-id") || "local"
 	);
 
+	  // Query the Upstash vector index
+  	const queryResults = await index.query({
+    		vector: [/* your query vector */],
+    		topK: 5,
+    		includeMetadata: true,
+  	});
+
+  	// Enhance the prompt with additional context
+  	const additionalContext = queryResults.matches
+    	.map((match) => match.metadata.sentence)
+    	.join("\n");
+
+  	const enhancedPrompt = `${transcript}\n\nAdditional Context:\n${additionalContext}`;
+
 	const completion = await groq.chat.completions.create({
 		model: "llama3-8b-8192",
 		messages: [
@@ -54,7 +74,7 @@ export async function POST(request: Request) {
 			...data.message,
 			{
 				role: "user",
-				content: transcript,
+				content: enhancedPrompt,
 			},
 		],
 	});
