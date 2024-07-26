@@ -96,7 +96,8 @@ export async function POST(request: Request) {
             - The current time is ${time()}.
             - Your large language model is Llama 3, created by Meta, the 8 billion parameter version. It is hosted on Groq, an AI infrastructure company that builds fast inference technology.
             - Your text-to-speech model is Sonic, created and hosted by Cartesia, a company that builds fast and realistic speech synthesis technology.
-            - You are built with Next.js and hosted on Vercel.`,
+            - You are built with Next.js and hosted on Vercel.
+- You will receive context regarding about Asycd and a query. You the context to answer concisely and progressively to the user`,
             },
             ...data.message,
             {
