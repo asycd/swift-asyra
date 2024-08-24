@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { EnterIcon, LoadingIcon } from "@/lib/icons";
+import { EnterIcon, LoadingIcon, MicIcon } from "@/lib/icons"; // Assuming MicIcon is available
 import { usePlayer } from "@/lib/usePlayer";
 import { track } from "@vercel/analytics";
 import { useMicVAD, utils } from "@ricky0123/vad-react";
@@ -20,7 +20,7 @@ export default function Home() {
   const player = usePlayer();
 
   const vad = useMicVAD({
-    startOnLoad: true,
+    startOnLoad: false, // Start VAD manually
     onSpeechEnd: (audio) => {
       player.stop();
       const wav = utils.encodeWAV(audio);
@@ -58,7 +58,7 @@ export default function Home() {
 
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
-  });
+  }, []);
 
   const [messages, submit, isPending] = useActionState<
     Array<Message>,
@@ -128,6 +128,10 @@ export default function Home() {
     submit(input);
   }
 
+  function startRecording() {
+    vad.start(); // Manually start the VAD and recording process
+  }
+
   return (
     <>
       <div className="pb-4 min-h-28" />
@@ -155,6 +159,17 @@ export default function Home() {
           {isPending ? <LoadingIcon /> : <EnterIcon />}
         </button>
       </form>
+
+      <div className="flex justify-center mt-4">
+        <button
+          onClick={startRecording}
+          className="p-4 bg-blue-500 text-white rounded-full hover:bg-blue-600"
+          aria-label="Start Recording"
+        >
+          <MicIcon />
+          Start Recording
+        </button>
+      </div>
 
       <div className="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl text-balance min-h-28 space-y-4">
         {messages.length > 0 && (
@@ -189,7 +204,7 @@ export default function Home() {
             ) : vad.errored ? (
               <p>Failed to load speech detection.</p>
             ) : (
-              <p>Start talking to chat.</p>
+              <p>Click "Start Recording" to chat.</p>
             )}
           </>
         )}
