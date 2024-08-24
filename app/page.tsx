@@ -17,16 +17,16 @@ export default function Home() {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const player = usePlayer();
-  const [isRecording, setIsRecording] = useState(false); // Track recording state
 
   const vad = useMicVAD({
-    startOnLoad: false, // Start recording only on user action
+    startOnLoad: true,
     onSpeechEnd: (audio) => {
       player.stop();
       const wav = utils.encodeWAV(audio);
       const blob = new Blob([wav], { type: "audio/wav" });
       submit(blob);
-      setIsRecording(false); // Reset recording state
+      const isFirefox = navigator.userAgent.includes("Firefox");
+      if (isFirefox) vad.pause();
     },
     workletURL: "/vad.worklet.bundle.min.js",
     modelURL: "/silero_vad.onnx",
@@ -39,7 +39,8 @@ export default function Home() {
 
       ort.env.wasm = {
         wasmPaths: {
-          "ort-wasm-simd-threaded.wasm": "/ort-wasm-simd-threaded.wasm",
+          "ort-wasm-simd-threaded.wasm":
+            "/ort-wasm-simd-threaded.wasm",
           "ort-wasm-simd.wasm": "/ort-wasm-simd.wasm",
           "ort-wasm.wasm": "/ort-wasm.wasm",
           "ort-wasm-threaded.wasm": "/ort-wasm-threaded.wasm",
@@ -67,10 +68,8 @@ export default function Home() {
 
     if (typeof data === "string") {
       formData.append("input", data);
-      track("Text input");
     } else {
       formData.append("input", data, "audio.wav");
-      track("Speech input");
     }
 
     for (const message of prevMessages) {
@@ -127,13 +126,8 @@ export default function Home() {
     submit(input);
   }
 
-  function startRecording() {
-    if (isRecording) {
-      vad.stop(); // Stop the recording
-    } else {
-      vad.start(); // Start recording
-    }
-    setIsRecording(!isRecording); // Toggle recording state
+  function handleVoiceStart() {
+    vad.start();
   }
 
   return (
@@ -164,16 +158,14 @@ export default function Home() {
         </button>
       </form>
 
-      <div className="flex justify-center mt-4">
-        <button
-          onClick={startRecording}
-          className="p-4 bg-blue-500 text-white rounded-full hover:bg-blue-600"
-          aria-label="Start Recording"
-          disabled={isPending}
-        >
-          🎤 {isRecording ? "Stop" : "Start"}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleVoiceStart}
+        className="p-4 text-neutral-700 hover:text-black dark:text-neutral-300 dark:hover:text-white"
+        aria-label="Start Recording"
+      >
+        🎙️
+      </button>
 
       <div className="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl text-balance min-h-28 space-y-4">
         {messages.length > 0 && (
@@ -190,13 +182,13 @@ export default function Home() {
           <>
             <p>
               A fast, open-source voice assistant powered by{" "}
-              <A href="https://groq.com">Groq</A>,{" "}
-              <A href="https://cartesia.ai">Cartesia</A>,{" "}
-              <A href="https://www.vad.ricky0123.com/">VAD</A>, and{" "}
-              <A href="https://vercel.com">Vercel</A>.{" "}
-              <A href="https://github.com/ai-ng/swift" target="_blank">
+              <a href="https://groq.com">Groq</a>,{" "}
+              <a href="https://cartesia.ai">Cartesia</a>,{" "}
+              <a href="https://www.vad.ricky0123.com/">VAD</a>,
+              and <a href="https://vercel.com">Vercel</a>.{" "}
+              <a href="https://github.com/ai-ng/swift" target="_blank">
                 Learn more
-              </A>
+              </a>
               .
             </p>
 
@@ -216,20 +208,12 @@ export default function Home() {
           "absolute size-36 blur-3xl rounded-full bg-gradient-to-b from-red-200 to-red-400 dark:from-red-600 dark:to-red-800 -z-50 transition ease-in-out",
           {
             "opacity-0": vad.loading || vad.errored,
-            "opacity-30": !vad.loading && !vad.errored && !vad.userSpeaking,
+            "opacity-30":
+              !vad.loading && !vad.errored && !vad.userSpeaking,
             "opacity-100 scale-110": vad.userSpeaking,
           }
         )}
       />
     </>
-  );
-}
-
-function A(props: any) {
-  return (
-    <a
-      {...props}
-      className="text-neutral-500 dark:text-neutral-500 hover:underline font-medium"
-    />
   );
 }
