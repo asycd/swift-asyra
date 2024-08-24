@@ -3,9 +3,8 @@
 import clsx from "clsx";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { EnterIcon, LoadingIcon, MicIcon } from "@/lib/icons"; // Assuming MicIcon is available
+import { EnterIcon, LoadingIcon } from "@/lib/icons";
 import { usePlayer } from "@/lib/usePlayer";
-import { track } from "@vercel/analytics";
 import { useMicVAD, utils } from "@ricky0123/vad-react";
 
 type Message = {
@@ -18,16 +17,16 @@ export default function Home() {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const player = usePlayer();
+  const [isRecording, setIsRecording] = useState(false); // Track recording state
 
   const vad = useMicVAD({
-    startOnLoad: false, // Start VAD manually
+    startOnLoad: false, // Start recording only on user action
     onSpeechEnd: (audio) => {
       player.stop();
       const wav = utils.encodeWAV(audio);
       const blob = new Blob([wav], { type: "audio/wav" });
       submit(blob);
-      const isFirefox = navigator.userAgent.includes("Firefox");
-      if (isFirefox) vad.pause();
+      setIsRecording(false); // Reset recording state
     },
     workletURL: "/vad.worklet.bundle.min.js",
     modelURL: "/silero_vad.onnx",
@@ -58,7 +57,7 @@ export default function Home() {
 
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
-  }, []);
+  });
 
   const [messages, submit, isPending] = useActionState<
     Array<Message>,
@@ -129,7 +128,12 @@ export default function Home() {
   }
 
   function startRecording() {
-    vad.start(); // Manually start the VAD and recording process
+    if (isRecording) {
+      vad.stop(); // Stop the recording
+    } else {
+      vad.start(); // Start recording
+    }
+    setIsRecording(!isRecording); // Toggle recording state
   }
 
   return (
@@ -165,9 +169,9 @@ export default function Home() {
           onClick={startRecording}
           className="p-4 bg-blue-500 text-white rounded-full hover:bg-blue-600"
           aria-label="Start Recording"
+          disabled={isPending}
         >
-          <MicIcon />
-          Start Recording
+          🎤 {isRecording ? "Stop" : "Start"}
         </button>
       </div>
 
@@ -188,12 +192,9 @@ export default function Home() {
               A fast, open-source voice assistant powered by{" "}
               <A href="https://groq.com">Groq</A>,{" "}
               <A href="https://cartesia.ai">Cartesia</A>,{" "}
-              <A href="https://www.vad.ricky0123.com/">VAD</A>,
-              and <A href="https://vercel.com">Vercel</A>.{" "}
-              <A
-                href="https://github.com/ai-ng/swift"
-                target="_blank"
-              >
+              <A href="https://www.vad.ricky0123.com/">VAD</A>, and{" "}
+              <A href="https://vercel.com">Vercel</A>.{" "}
+              <A href="https://github.com/ai-ng/swift" target="_blank">
                 Learn more
               </A>
               .
@@ -204,7 +205,7 @@ export default function Home() {
             ) : vad.errored ? (
               <p>Failed to load speech detection.</p>
             ) : (
-              <p>Click "Start Recording" to chat.</p>
+              <p>Start talking to chat.</p>
             )}
           </>
         )}
@@ -215,8 +216,7 @@ export default function Home() {
           "absolute size-36 blur-3xl rounded-full bg-gradient-to-b from-red-200 to-red-400 dark:from-red-600 dark:to-red-800 -z-50 transition ease-in-out",
           {
             "opacity-0": vad.loading || vad.errored,
-            "opacity-30":
-              !vad.loading && !vad.errored && !vad.userSpeaking,
+            "opacity-30": !vad.loading && !vad.errored && !vad.userSpeaking,
             "opacity-100 scale-110": vad.userSpeaking,
           }
         )}
