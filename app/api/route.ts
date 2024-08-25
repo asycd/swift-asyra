@@ -97,7 +97,7 @@ export async function POST(request: Request) {
             - Your large language model is Llama 3, created by Meta, the 8 billion parameter version. It is hosted on Groq, an AI infrastructure company that builds fast inference technology.
             - Your text-to-speech model is Sonic, created and hosted by Cartesia, a company that builds fast and realistic speech synthesis technology.
             - You are built with Next.js and hosted on Vercel.
-- You will receive context regarding about Asycd and a query. You the context to answer concisely and progressively to the user`,
+- You will receive context regarding about Asycd and a query. Use the context to answer concisely and progressively to the user`,
             },
             ...data.message,
             {
@@ -107,90 +107,55 @@ export async function POST(request: Request) {
         ],
     });
 
-	const response = completion.choices[0].message.content;
-	console.timeEnd(
-		"text completion " + request.headers.get("x-vercel-id") || "local"
-	);
+    const response = completion.choices[0].message.content;
+    console.timeEnd(
+        "text completion " + request.headers.get("x-vercel-id") || "local"
+    );
 
-	console.time(
-		"cartesia request " + request.headers.get("x-vercel-id") || "local"
-	);
+    console.time("stream " + request.headers.get("x-vercel-id") || "local");
+    after(() => {
+        console.timeEnd(
+            "stream " + request.headers.get("x-vercel-id") || "local"
+        );
+    });
 
-	const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
-		method: "POST",
-		headers: {
-			"Cartesia-Version": "2024-06-30",
-			"Content-Type": "application/json",
-			"X-API-Key": process.env.CARTESIA_API_KEY!,
-		},
-		body: JSON.stringify({
-			model_id: "sonic-english",
-			transcript: response,
-			voice: {
-				mode: "id",
-				id: "79a125e8-cd45-4c13-8a67-188112f4dd22",
-			},
-			output_format: {
-				container: "raw",
-				encoding: "pcm_f32le",
-				sample_rate: 24000,
-			},
-		}),
-	});
-
-	console.timeEnd(
-		"cartesia request " + request.headers.get("x-vercel-id") || "local"
-	);
-
-	if (!voice.ok) {
-		console.error(await voice.text());
-		return new Response("Voice synthesis failed", { status: 500 });
-	}
-
-	console.time("stream " + request.headers.get("x-vercel-id") || "local");
-	after(() => {
-		console.timeEnd(
-			"stream " + request.headers.get("x-vercel-id") || "local"
-		);
-	});
-
-	return new Response(voice.body, {
-		headers: {
-			"X-Transcript": encodeURIComponent(transcript),
-			"X-Response": encodeURIComponent(response),
-		},
-	});
+    return new Response(response, {
+        headers: {
+            "X-Transcript": encodeURIComponent(transcript),
+            "X-Response": encodeURIComponent(response),
+        },
+    });
 }
 
 function location() {
-	const headersList = headers();
+    const headersList = headers();
 
-	const country = headersList.get("x-vercel-ip-country");
-	const region = headersList.get("x-vercel-ip-country-region");
-	const city = headersList.get("x-vercel-ip-city");
+    const country = headersList.get("x-vercel-ip-country");
+    const region = headersList.get("x-vercel-ip-country-region");
+    const city = headersList.get("x-vercel-ip-city");
 
-	if (!country || !region || !city) return "unknown";
+    if (!country || !region || !city) return "unknown";
 
-	return `${city}, ${region}, ${country}`;
+    return `${city}, ${region}, ${country}`;
 }
 
 function time() {
-	return new Date().toLocaleString("en-US", {
-		timeZone: headers().get("x-vercel-ip-timezone") || undefined,
-	});
+    return new Date().toLocaleString("en-US", {
+        timeZone: headers().get("x-vercel-ip-timezone") || undefined,
+    });
 }
 
 async function getTranscript(input: string | File) {
-	if (typeof input === "string") return input;
+    if (typeof input === "string") return input;
 
-	try {
-		const { text } = await groq.audio.transcriptions.create({
-			file: input,
-			model: "whisper-large-v3",
-		});
+    try {
+        const { text } = await groq.audio.transcriptions.create({
+            file: input,
+            model: "whisper-large-v3",
+        });
 
-		return text.trim() || null;
-	} catch {
-		return null; // Empty audio file
-	}
+        return text.trim() || null;
+    } catch {
+        return null; // Empty audio file
+    }
 }
