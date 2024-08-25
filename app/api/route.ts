@@ -4,7 +4,7 @@ import { z } from "zod";
 import { zfd } from "zod-form-data";
 import { unstable_after as after } from "next/server";
 import { Index } from "@upstash/vector";
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const index = new Index({
     url: "https://optimum-sparrow-61704-us1-vector.upstash.io",
@@ -28,39 +28,93 @@ const schema = zfd.formData({
     ),
 });
 
-async function getQueryEmbedding(query: string): Promise<number[]> {
+// Create and inject the text stream container into the DOM
+(function createTextStreamWindow() {
+    const textStreamContainer = document.createElement('div');
+    textStreamContainer.id = 'textStream';
+    textStreamContainer.style.width = '100%';
+    textStreamContainer.style.height = '300px';
+    textStreamContainer.style.overflowY = 'auto';
+    textStreamContainer.style.border = '1px solid #ccc';
+    textStreamContainer.style.padding = '10px';
+    textStreamContainer.style.fontFamily = 'monospace';
+    textStreamContainer.style.whiteSpace = 'pre-wrap'; // preserves newlines and spaces
+    textStreamContainer.style.backgroundColor = '#f9f9f9';
+    textStreamContainer.style.marginTop = '20px';
+
+    document.body.appendChild(textStreamContainer);
+})();
+
+// Function to stream text to the window
+function streamText(content) {
+    const textStream = document.getElementById('textStream');
+    if (textStream) {
+        textStream.textContent += content + '\n';
+        textStream.scrollTop = textStream.scrollHeight; // Auto-scroll to bottom
+    }
+}
+
+// Mock function to simulate streaming text data
+function simulateStream() {
+    const sampleText = [
+        "Initializing system...",
+        "Loading data...",
+        "Processing request...",
+        "Querying database...",
+        "Generating response...",
+        "Streaming data to client..."
+    ];
+
+    let index = 0;
+
+    const interval = setInterval(() => {
+        if (index < sampleText.length) {
+            streamText(sampleText[index]);
+            index++;
+        } else {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+// Call simulateStream to start the streaming when the page loads
+simulateStream();
+
+async function getQueryEmbedding(query) {
     const response = await openai.embeddings.create({
         model: "text-embedding-ada-002",
-        input: query
+        input: query,
     });
     return response.data[0].embedding;
 }
 
-async function queryIndex(queryVector: number[], topK: number = 5) {
+async function queryIndex(queryVector, topK = 5) {
     try {
         const results = await index.query({
             vector: queryVector,
             topK: topK,
             includeMetadata: true,
-            includeVectors: false
+            includeVectors: false,
         });
 
-        return results.map(result => ({
+        return results.map((result) => ({
             id: result.id,
             score: result.score,
-            text: result.metadata?.text as string
+            text: result.metadata?.text as string,
         }));
     } catch (error) {
-        console.error('Error querying index:', error);
+        console.error("Error querying index:", error);
         throw error;
     }
 }
 
-export async function POST(request: Request) {
+export async function POST(request) {
     console.time("transcribe " + request.headers.get("x-vercel-id") || "local");
 
     const { data, success } = schema.safeParse(await request.formData());
     if (!success) return new Response("Invalid request", { status: 400 });
+
+    streamText("Transcribing input...");
 
     const transcript = await getTranscript(data.input);
     if (!transcript) return new Response("Invalid audio", { status: 400 });
@@ -68,18 +122,21 @@ export async function POST(request: Request) {
     console.timeEnd("transcribe " + request.headers.get("x-vercel-id") || "local");
     console.time("text completion " + request.headers.get("x-vercel-id") || "local");
 
-    // Get embedding for the transcript
+    streamText("Generating embedding...");
+
     const queryEmbedding = await getQueryEmbedding(transcript);
 
-    // Query the Upstash vector index
+    streamText("Querying vector index...");
+
     const queryResults = await queryIndex(queryEmbedding, 5);
 
-    // Enhance the prompt with additional context
     const additionalContext = queryResults
-        .map(result => result.text)
+        .map((result) => result.text)
         .join("\n");
 
     const enhancedPrompt = `${transcript}\n\nAdditional Context:\n${additionalContext}`;
+
+    streamText("Requesting text completion...");
 
     const completion = await groq.chat.completions.create({
         model: "llama3-8b-8192",
@@ -108,9 +165,46 @@ export async function POST(request: Request) {
     });
 
     const response = completion.choices[0].message.content;
+
     console.timeEnd(
         "text completion " + request.headers.get("x-vercel-id") || "local"
     );
+
+    streamText("Text completion received: ");
+    streamText(response);
+
+    console.time("cartesia request " + request.headers.get("x-vercel-id") || "local");
+
+    const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
+        method: "POST",
+        headers: {
+            "Cartesia-Version": "2024-06-30",
+            "Content-Type": "application/json",
+            "X-API-Key": process.env.CARTESIA_API_KEY!,
+        },
+        body: JSON.stringify({
+            model_id: "sonic-english",
+            transcript: response,
+            voice: {
+                mode: "id",
+                id: "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            },
+            output_format: {
+                container: "raw",
+                encoding: "pcm_f32le",
+                sample_rate: 24000,
+            },
+        }),
+    });
+
+    console.timeEnd(
+        "cartesia request " + request.headers.get("x-vercel-id") || "local"
+    );
+
+    if (!voice.ok) {
+        console.error(await voice.text());
+        return new Response("Voice synthesis failed", { status: 500 });
+    }
 
     console.time("stream " + request.headers.get("x-vercel-id") || "local");
     after(() => {
@@ -119,7 +213,7 @@ export async function POST(request: Request) {
         );
     });
 
-    return new Response(response, {
+    return new Response(voice.body, {
         headers: {
             "X-Transcript": encodeURIComponent(transcript),
             "X-Response": encodeURIComponent(response),
@@ -145,7 +239,7 @@ function time() {
     });
 }
 
-async function getTranscript(input: string | File) {
+async function getTranscript(input) {
     if (typeof input === "string") return input;
 
     try {
