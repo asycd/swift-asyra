@@ -46,7 +46,7 @@ const schema = zfd.formData({
 })();
 
 // Function to stream text to the window
-function streamText(content) {
+function streamText(content: string) {
     const textStream = document.getElementById('textStream');
     if (textStream) {
         textStream.textContent += content + '\n';
@@ -80,7 +80,7 @@ function simulateStream() {
 // Call simulateStream to start the streaming when the page loads
 simulateStream();
 
-async function getQueryEmbedding(query) {
+async function getQueryEmbedding(query: string) {
     const response = await openai.embeddings.create({
         model: "text-embedding-ada-002",
         input: query,
@@ -88,7 +88,7 @@ async function getQueryEmbedding(query) {
     return response.data[0].embedding;
 }
 
-async function queryIndex(queryVector, topK = 5) {
+async function queryIndex(queryVector: number[], topK = 5) {
     try {
         const results = await index.query({
             vector: queryVector,
@@ -108,7 +108,7 @@ async function queryIndex(queryVector, topK = 5) {
     }
 }
 
-export async function POST(request) {
+export async function POST(request: Request) {
     console.time("transcribe " + request.headers.get("x-vercel-id") || "local");
 
     const { data, success } = schema.safeParse(await request.formData());
@@ -173,39 +173,6 @@ export async function POST(request) {
     streamText("Text completion received: ");
     streamText(response);
 
-    console.time("cartesia request " + request.headers.get("x-vercel-id") || "local");
-
-    const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
-        method: "POST",
-        headers: {
-            "Cartesia-Version": "2024-06-30",
-            "Content-Type": "application/json",
-            "X-API-Key": process.env.CARTESIA_API_KEY!,
-        },
-        body: JSON.stringify({
-            model_id: "sonic-english",
-            transcript: response,
-            voice: {
-                mode: "id",
-                id: "79a125e8-cd45-4c13-8a67-188112f4dd22",
-            },
-            output_format: {
-                container: "raw",
-                encoding: "pcm_f32le",
-                sample_rate: 24000,
-            },
-        }),
-    });
-
-    console.timeEnd(
-        "cartesia request " + request.headers.get("x-vercel-id") || "local"
-    );
-
-    if (!voice.ok) {
-        console.error(await voice.text());
-        return new Response("Voice synthesis failed", { status: 500 });
-    }
-
     console.time("stream " + request.headers.get("x-vercel-id") || "local");
     after(() => {
         console.timeEnd(
@@ -213,7 +180,7 @@ export async function POST(request) {
         );
     });
 
-    return new Response(voice.body, {
+    return new Response(response, {
         headers: {
             "X-Transcript": encodeURIComponent(transcript),
             "X-Response": encodeURIComponent(response),
@@ -239,7 +206,7 @@ function time() {
     });
 }
 
-async function getTranscript(input) {
+async function getTranscript(input: string | File) {
     if (typeof input === "string") return input;
 
     try {
