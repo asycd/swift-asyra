@@ -46,8 +46,7 @@ async function extractKeywords(
     messages: [
       {
         role: "system",
-        content: `You are an AI model specialized in keyword extraction. Given a user's query and a related transcript, extract the five most relevant and specific keywords from the transcript that align with the user's query. Return the keywords as a comma-separated string.`,
-      },
+        content: `You are an AI model specialized in keyword extraction. Given a user's query and a related transcript, extract the maxiumum 5 most relevant and specific keywords from the transcript that align with the user's query.No need to use double or single quotes. Return the keywords as a comma-separated string e.g.User Query: "I need information about cloud computing services." keywords:cloud computing,services,information `},
       {
         role: "user",
         content: `Query: ${query}\n\nTranscript: ${transcript}`,
