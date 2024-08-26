@@ -8,8 +8,8 @@ import OpenAI from 'openai';
 
 // **Recommendation: Use environment variables for sensitive information**
 const index = new Index({
-    url: process.env.UPSTASH_VECTOR_URL!, // e.g., "https://your-vector.upstash.io"
-    token: process.env.UPSTASH_VECTOR_TOKEN!, // Your Upstash vector token
+    url: process.env.UPSTASH_VECTOR_URL, // e.g., "https://your-vector.upstash.io"
+    token: process.env.UPSTASH_VECTOR_TOKEN, // Your Upstash vector token
 });
 
 const groq = new Groq();
