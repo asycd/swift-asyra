@@ -9,57 +9,47 @@ export function usePlayer() {
     stop(); // Stop any existing playback
     audioContext.current = new AudioContext({ sampleRate: 24000 });
 
-    let nextStartTime = audioContext.current.currentTime;
     const reader = stream.getReader();
-    let leftover = new Uint8Array();
+    let chunks: Uint8Array[] = [];
     let result = await reader.read();
-    setIsPlaying(true);
 
-    try {
-      while (!result.done && audioContext.current) {
-        const data = new Uint8Array(leftover.length + result.value.length);
-        data.set(leftover);
-        data.set(result.value, leftover.length);
-
-        const length = Math.floor(data.length / 4) * 4;
-        const remainder = data.length % 4;
-        const buffer = new Float32Array(data.buffer, 0, length / 4);
-
-        leftover = new Uint8Array(data.buffer, length, remainder);
-
-        const audioBuffer = audioContext.current.createBuffer(
-          1,
-          buffer.length,
-          audioContext.current.sampleRate
-        );
-        audioBuffer.copyToChannel(buffer, 0);
-
-        source.current = audioContext.current.createBufferSource();
-        source.current.buffer = audioBuffer;
-        source.current.connect(audioContext.current.destination);
-
-        // Ensure the source starts at the correct time
-        if (nextStartTime < audioContext.current.currentTime) {
-          nextStartTime = audioContext.current.currentTime;
-        }
-
-        source.current.start(nextStartTime);
-        nextStartTime += audioBuffer.duration;
-
-        result = await reader.read();
-      }
-
-      // Handle end of stream
-      if (source.current) {
-        source.current.onended = () => {
-          stop();
-          callback();
-        };
-      }
-    } catch (error) {
-      console.error("Error during audio playback:", error);
-      stop();
+    // Read and buffer the entire stream
+    while (!result.done) {
+      chunks.push(result.value);
+      result = await reader.read();
     }
+
+    // Concatenate all chunks into a single Uint8Array
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const audioData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      audioData.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // Convert Uint8Array to Float32Array
+    const buffer = new Float32Array(audioData.buffer);
+
+    // Create an AudioBuffer from the Float32Array
+    const audioBuffer = audioContext.current.createBuffer(
+      1,
+      buffer.length,
+      audioContext.current.sampleRate
+    );
+    audioBuffer.copyToChannel(buffer, 0);
+
+    // Play the AudioBuffer
+    source.current = audioContext.current.createBufferSource();
+    source.current.buffer = audioBuffer;
+    source.current.connect(audioContext.current.destination);
+    source.current.onended = () => {
+      stop();
+      callback();
+    };
+
+    source.current.start();
+    setIsPlaying(true);
   }
 
   function stop() {
