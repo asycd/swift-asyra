@@ -8,7 +8,7 @@ import OpenAI from 'openai';
 
 const index = new Index({
     url: "https://optimum-sparrow-61704-us1-vector.upstash.io",
-    token: "YOUR_TOKEN_HERE"
+    token: "ABkFMG9wdGltdW0tc3BhcnJvdy02MTcwNC11czFhZG1pbk0yRm1OVEZsTURZdE1UVXdNUzAwTlRjMUxXRTNZak10TW1OaVpXUm1aV1U1T1RBeQ=="
 });
 
 const groq = new Groq();
