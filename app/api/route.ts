@@ -4,8 +4,7 @@ import { z } from "zod";
 import { zfd } from "zod-form-data";
 import { unstable_after as after } from "next/server";
 import { Index } from "@upstash/vector";
-import OpenAI from "openai";
-import nlp from "compromise";  // Import an NLP library like compromise
+import OpenAI from 'openai';
 
 // **Recommendation: Use environment variables for sensitive information**
 const index = new Index({
@@ -69,8 +68,8 @@ async function extractKeywords(
   try {
     const cleanedKeywordMessage = keywordMessage.trim();
 
-    // Use NLP to split the comma-separated keywords into an array
-    const keywords = nlp(cleanedKeywordMessage).terms().out('array');
+    // Use native JavaScript to split the comma-separated keywords into an array
+    const keywords = cleanedKeywordMessage.split(',').map((keyword) => keyword.trim());
 
     if (Array.isArray(keywords)) {
       return keywords.slice(0, 5);
@@ -83,10 +82,7 @@ async function extractKeywords(
   }
 }
 
-async function queryIndexForKeywords(
-  keywords: string[],
-  topK: number = 5
-) {
+async function queryIndexForKeywords(keywords: string[], topK: number = 5) {
   const allResults = [];
 
   for (const keyword of keywords) {
@@ -117,9 +113,7 @@ async function queryIndexForKeywords(
   return allResults;
 }
 
-async function analyzeQueryResults(
-  results: any[]
-): Promise<string> {
+async function analyzeQueryResults(results: any[]): Promise<string> {
   const breakdown = await groq.chat.completions.create({
     model: "llama3-8b-8192",
     messages: [
@@ -143,36 +137,22 @@ async function analyzeQueryResults(
 }
 
 export async function POST(request: Request) {
-  console.time(
-    "transcribe " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.time("transcribe " + request.headers.get("x-vercel-id") || "local");
 
   const { data, success } = schema.safeParse(await request.formData());
   if (!success) return new Response("Invalid request", { status: 400 });
 
   const transcript = await getTranscript(data.input);
-  if (!transcript)
-    return new Response("Invalid audio", { status: 400 });
+  if (!transcript) return new Response("Invalid audio", { status: 400 });
 
-  console.timeEnd(
-    "transcribe " + request.headers.get("x-vercel-id") || "local"
-  );
-  console.time(
-    "text completion " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.timeEnd("transcribe " + request.headers.get("x-vercel-id") || "local");
+  console.time("text completion " + request.headers.get("x-vercel-id") || "local");
 
-  const extractedKeywords = await extractKeywords(
-    data.message[0].content,
-    transcript
-  );
+  const extractedKeywords = await extractKeywords(data.message[0].content, transcript);
 
-  const keywordSearchResults = await queryIndexForKeywords(
-    extractedKeywords
-  );
+  const keywordSearchResults = await queryIndexForKeywords(extractedKeywords);
 
-  const analyzedResults = await analyzeQueryResults(
-    keywordSearchResults
-  );
+  const analyzedResults = await analyzeQueryResults(keywordSearchResults);
 
   const enhancedPrompt = `${transcript}\n\nAnalyzed Context:\n${analyzedResults}`;
 
@@ -202,23 +182,14 @@ export async function POST(request: Request) {
     ],
   });
 
-  const completionChoices = completion.choices;
-  if (!completionChoices || !completionChoices[0] || !completionChoices[0].message) {
-    throw new Error("No valid response received from completion API.");
-  }
-
-  const response = completionChoices[0].message.content;
+  const response = completion.choices?.[0]?.message?.content;
   if (!response) {
     throw new Error("No response content found in completion.");
   }
 
-  console.timeEnd(
-    "text completion " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.timeEnd("text completion " + request.headers.get("x-vercel-id") || "local");
 
-  console.time(
-    "cartesia request " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.time("cartesia request " + request.headers.get("x-vercel-id") || "local");
 
   const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
     method: "POST",
@@ -242,22 +213,16 @@ export async function POST(request: Request) {
     }),
   });
 
-  console.timeEnd(
-    "cartesia request " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.timeEnd("cartesia request " + request.headers.get("x-vercel-id") || "local");
 
   if (!voice.ok) {
     console.error(await voice.text());
     return new Response("Voice synthesis failed", { status: 500 });
   }
 
-  console.time(
-    "stream " + request.headers.get("x-vercel-id") || "local"
-  );
+  console.time("stream " + request.headers.get("x-vercel-id") || "local");
   after(() => {
-    console.timeEnd(
-      "stream " + request.headers.get("x-vercel-id") || "local"
-    );
+    console.timeEnd("stream " + request.headers.get("x-vercel-id") || "local");
   });
 
   return new Response(voice.body, {
@@ -270,8 +235,25 @@ export async function POST(request: Request) {
 
 async function getTranscript(
   input: string | File
-): Promise<string> {
-  // Assuming some logic to convert input to transcript
-  // This function should return the transcript as a string
-  return "Sample transcript text here";
+): Promise<string | null> {
+  if (input instanceof File) {
+    return "Example transcript from audio file";
+  } else if (typeof input === "string") {
+    return input;
+  }
+  return null;
+}
+
+function location() {
+  const headersList = headers();
+
+  const country = headersList.get("x-vercel-ip-country");
+  const region = headersList.get("x-vercel-ip-country-region");
+  const city = headersList.get("x-vercel-ip-city");
+
+  return `${city}, ${region}, ${country}`;
+}
+
+function time() {
+  return new Date().toLocaleTimeString("en-US", { timeZone: "UTC" });
 }
