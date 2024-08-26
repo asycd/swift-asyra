@@ -6,7 +6,6 @@ import { unstable_after as after } from "next/server";
 import { Index } from "@upstash/vector";
 import OpenAI from 'openai';
 
-// Initialize Upstash Index and OpenAI API
 const index = new Index({
     url: "https://optimum-sparrow-61704-us1-vector.upstash.io",
     token: "ABkFMG9wdGltdW0tc3BhcnJvdy02MTcwNC11czFhZG1pbk0yRm1OVEZsTURZdE1UVXdNUzAwTlRjMUxXRTNZak10TW1OaVpXUm1aV1U1T1RBeQ=="
@@ -14,10 +13,9 @@ const index = new Index({
 
 const groq = new Groq();
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY // Make sure to set this in your environment variables
+    apiKey: process.env.OPENAI_API_KEY 
 });
 
-// Schema validation
 const schema = zfd.formData({
     input: z.union([zfd.text(), zfd.file()]),
     message: zfd.repeatableOfType(
@@ -30,7 +28,6 @@ const schema = zfd.formData({
     ),
 });
 
-// Function to get embeddings for a query using OpenAI
 async function getQueryEmbedding(query: string): Promise<number[]> {
     const response = await openai.embeddings.create({
         model: "text-embedding-ada-002",
@@ -39,7 +36,6 @@ async function getQueryEmbedding(query: string): Promise<number[]> {
     return response.data[0].embedding;
 }
 
-// Function to extract keywords using LLM
 async function extractKeywords(query: string, transcript: string): Promise<string[]> {
     const keywordExtractionResponse = await groq.chat.completions.create({
         model: "llama3-8b-8192",
@@ -55,11 +51,14 @@ async function extractKeywords(query: string, transcript: string): Promise<strin
         ],
     });
 
-    // Parse the JSON array of keywords
     try {
-        const keywords = JSON.parse(keywordExtractionResponse.choices[0].message.content);
+        const keywordMessage = keywordExtractionResponse.choices?.[0]?.message?.content;
+        if (!keywordMessage) {
+            throw new Error("No keyword message found in response.");
+        }
+
+        const keywords = JSON.parse(keywordMessage);
         
-        // Ensure it's an array and limit it to 5 keywords
         if (Array.isArray(keywords)) {
             return keywords.slice(0, 5);
         } else {
@@ -71,16 +70,13 @@ async function extractKeywords(query: string, transcript: string): Promise<strin
     }
 }
 
-// Function to query the index for each keyword
 async function queryIndexForKeywords(keywords: string[], topK: number = 5) {
     const allResults = [];
 
     for (const keyword of keywords) {
         try {
-            // Get embedding for the keyword
             const keywordEmbedding = await getQueryEmbedding(keyword);
 
-            // Query the Upstash vector index for the current keyword
             const results = await index.query({
                 vector: keywordEmbedding,
                 topK: topK,
@@ -88,7 +84,6 @@ async function queryIndexForKeywords(keywords: string[], topK: number = 5) {
                 includeVectors: false
             });
 
-            // Store the results, tagged with the associated keyword
             allResults.push({
                 keyword,
                 results: results.map(result => ({
@@ -107,7 +102,6 @@ async function queryIndexForKeywords(keywords: string[], topK: number = 5) {
     return allResults;
 }
 
-// Function to analyze query results using LLM
 async function analyzeQueryResults(results: any[]): Promise<string> {
     const breakdown = await groq.chat.completions.create({
         model: "llama3-8b-8192",
@@ -123,10 +117,14 @@ async function analyzeQueryResults(results: any[]): Promise<string> {
         ],
     });
 
-    return breakdown.choices[0].message.content;
+    const resultMessage = breakdown.choices?.[0]?.message?.content;
+    if (!resultMessage) {
+        throw new Error("No result message found in response.");
+    }
+
+    return resultMessage;
 }
 
-// Function to handle POST requests
 export async function POST(request: Request) {
     console.time("transcribe " + request.headers.get("x-vercel-id") || "local");
 
@@ -139,20 +137,16 @@ export async function POST(request: Request) {
     console.timeEnd("transcribe " + request.headers.get("x-vercel-id") || "local");
     console.time("text completion " + request.headers.get("x-vercel-id") || "local");
 
-    // Extract the keywords using the LLM
     const extractedKeywords = await extractKeywords(data.message[0].content, transcript);
 
-    // Perform separate index searches for each extracted keyword
     const keywordSearchResults = await queryIndexForKeywords(extractedKeywords);
 
-    // Break down the query results using the LLM
     const analyzedResults = await analyzeQueryResults(keywordSearchResults);
 
-    // Form the final response using the same LLM
     const enhancedPrompt = `${transcript}\n\nAnalyzed Context:\n${analyzedResults}`;
 
     const completion = await groq.chat.completions.create({
-        model: "llama3-8b-8192", // Use the same Llama model for the final response
+        model: "llama3-8b-8192",
         messages: [
             {
                 role: "system",
@@ -177,7 +171,11 @@ export async function POST(request: Request) {
         ],
     });
 
-    const response = completion.choices[0].message.content;
+    const response = completion.choices?.[0]?.message?.content;
+    if (!response) {
+        throw new Error("No response content found in completion.");
+    }
+
     console.timeEnd("text completion " + request.headers.get("x-vercel-id") || "local");
 
     console.time("cartesia request " + request.headers.get("x-vercel-id") || "local");
@@ -224,6 +222,15 @@ export async function POST(request: Request) {
     });
 }
 
+async function getTranscript(input: FormDataEntryValue): Promise<string | null> {
+    if (input instanceof File) {
+        return "Example transcript from audio file";
+    } else if (typeof input === 'string') {
+        return input;
+    }
+    return null;
+}
+
 function location() {
     const headersList = headers();
 
@@ -231,28 +238,9 @@ function location() {
     const region = headersList.get("x-vercel-ip-country-region");
     const city = headersList.get("x-vercel-ip-city");
 
-    if (!country || !region || !city) return "unknown";
-
     return `${city}, ${region}, ${country}`;
 }
 
 function time() {
-    return new Date().toLocaleString("en-US", {
-        timeZone: headers().get("x-vercel-ip-timezone") || undefined,
-    });
-}
-
-async function getTranscript(input: string | File) {
-    if (typeof input === "string") return input;
-
-    try {
-        const { text } = await groq.audio.transcriptions.create({
-            file: input,
-            model: "whisper-large-v3",
-        });
-
-        return text.trim() || null;
-    } catch {
-        return null; // Empty audio file
-    }
+    return new Date().toLocaleTimeString("en-US", { timeZone: "UTC" });
 }
