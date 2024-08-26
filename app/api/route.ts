@@ -6,9 +6,10 @@ import { unstable_after as after } from "next/server";
 import { Index } from "@upstash/vector";
 import OpenAI from 'openai';
 
+// **Recommendation: Use environment variables for sensitive information**
 const index = new Index({
-    url: "https://optimum-sparrow-61704-us1-vector.upstash.io",
-    token: "ABkFMG9wdGltdW0tc3BhcnJvdy02MTcwNC11czFhZG1pbk0yRm1OVEZsTURZdE1UVXdNUzAwTlRjMUxXRTNZak10TW1OaVpXUm1aV1U1T1RBeQ=="
+    url: process.env.UPSTASH_VECTOR_URL!, // e.g., "https://your-vector.upstash.io"
+    token: process.env.UPSTASH_VECTOR_TOKEN!, // Your Upstash vector token
 });
 
 const groq = new Groq();
@@ -42,7 +43,7 @@ async function extractKeywords(query: string, transcript: string): Promise<strin
         messages: [
             {
                 role: "system",
-                content: `You are an AI model specialized in keyword extraction. Given a user's query and a related transcript, extract the five most relevant and specific keywords from the transcript that align with the user's query. Return the keywords as a JSON array.`,
+                content: `You are an AI model specialized in keyword extraction. Given a user's query and a related transcript, extract the five most relevant and specific keywords from the transcript that align with the user's query. Return only the keywords as a JSON array, without any additional text.`,
             },
             {
                 role: "user",
@@ -57,7 +58,13 @@ async function extractKeywords(query: string, transcript: string): Promise<strin
             throw new Error("No keyword message found in response.");
         }
 
-        const keywords = JSON.parse(keywordMessage);
+        // **Fix: Extract JSON array from the response string using regex**
+        const arrayMatch = keywordMessage.match(/\[.*?\]/s); // 's' flag for dotall to include newlines
+        if (!arrayMatch) {
+            throw new Error("No JSON array found in keyword extraction output.");
+        }
+
+        const keywords = JSON.parse(arrayMatch[0]);
         
         if (Array.isArray(keywords)) {
             return keywords.slice(0, 5);
@@ -126,7 +133,7 @@ async function analyzeQueryResults(results: any[]): Promise<string> {
 }
 
 export async function POST(request: Request) {
-    console.time("transcribe " + request.headers.get("x-vercel-id") || "local");
+    console.time("transcribe " + (request.headers.get("x-vercel-id") || "local"));
 
     const { data, success } = schema.safeParse(await request.formData());
     if (!success) return new Response("Invalid request", { status: 400 });
@@ -134,8 +141,8 @@ export async function POST(request: Request) {
     const transcript = await getTranscript(data.input);
     if (!transcript) return new Response("Invalid audio", { status: 400 });
 
-    console.timeEnd("transcribe " + request.headers.get("x-vercel-id") || "local");
-    console.time("text completion " + request.headers.get("x-vercel-id") || "local");
+    console.timeEnd("transcribe " + (request.headers.get("x-vercel-id") || "local"));
+    console.time("text completion " + (request.headers.get("x-vercel-id") || "local"));
 
     const extractedKeywords = await extractKeywords(data.message[0].content, transcript);
 
@@ -176,9 +183,9 @@ export async function POST(request: Request) {
         throw new Error("No response content found in completion.");
     }
 
-    console.timeEnd("text completion " + request.headers.get("x-vercel-id") || "local");
+    console.timeEnd("text completion " + (request.headers.get("x-vercel-id") || "local"));
 
-    console.time("cartesia request " + request.headers.get("x-vercel-id") || "local");
+    console.time("cartesia request " + (request.headers.get("x-vercel-id") || "local"));
 
     const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
         method: "POST",
@@ -202,16 +209,16 @@ export async function POST(request: Request) {
         }),
     });
 
-    console.timeEnd("cartesia request " + request.headers.get("x-vercel-id") || "local");
+    console.timeEnd("cartesia request " + (request.headers.get("x-vercel-id") || "local"));
 
     if (!voice.ok) {
         console.error(await voice.text());
         return new Response("Voice synthesis failed", { status: 500 });
     }
 
-    console.time("stream " + request.headers.get("x-vercel-id") || "local");
+    console.time("stream " + (request.headers.get("x-vercel-id") || "local"));
     after(() => {
-        console.timeEnd("stream " + request.headers.get("x-vercel-id") || "local");
+        console.timeEnd("stream " + (request.headers.get("x-vercel-id") || "local"));
     });
 
     return new Response(voice.body, {
@@ -224,6 +231,7 @@ export async function POST(request: Request) {
 
 async function getTranscript(input: FormDataEntryValue): Promise<string | null> {
     if (input instanceof File) {
+        // **Note:** Replace with actual transcription logic
         return "Example transcript from audio file";
     } else if (typeof input === 'string') {
         return input;
