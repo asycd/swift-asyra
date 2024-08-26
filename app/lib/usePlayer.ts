@@ -1,64 +1,80 @@
 import { useRef, useState } from "react";
 
 export function usePlayer() {
-	const [isPlaying, setIsPlaying] = useState(false);
-	const audioContext = useRef<AudioContext | null>(null);
-	const source = useRef<AudioBufferSourceNode | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioContext = useRef<AudioContext | null>(null);
+  const source = useRef<AudioBufferSourceNode | null>(null);
 
-	async function play(stream: ReadableStream, callback: () => void) {
-		stop();
-		audioContext.current = new AudioContext({ sampleRate: 24000 });
+  async function play(stream: ReadableStream, callback: () => void) {
+    stop(); // Stop any existing playback
+    audioContext.current = new AudioContext({ sampleRate: 24000 });
 
-		let nextStartTime = audioContext.current.currentTime;
-		const reader = stream.getReader();
-		let leftover = new Uint8Array();
-		let result = await reader.read();
-		setIsPlaying(true);
+    let nextStartTime = audioContext.current.currentTime;
+    const reader = stream.getReader();
+    let leftover = new Uint8Array();
+    let result = await reader.read();
+    setIsPlaying(true);
 
-		while (!result.done && audioContext.current) {
-			const data = new Uint8Array(leftover.length + result.value.length);
-			data.set(leftover);
-			data.set(result.value, leftover.length);
+    try {
+      while (!result.done && audioContext.current) {
+        const data = new Uint8Array(leftover.length + result.value.length);
+        data.set(leftover);
+        data.set(result.value, leftover.length);
 
-			const length = Math.floor(data.length / 4) * 4;
-			const remainder = data.length % 4;
-			const buffer = new Float32Array(data.buffer, 0, length / 4);
+        const length = Math.floor(data.length / 4) * 4;
+        const remainder = data.length % 4;
+        const buffer = new Float32Array(data.buffer, 0, length / 4);
 
-			leftover = new Uint8Array(data.buffer, length, remainder);
+        leftover = new Uint8Array(data.buffer, length, remainder);
 
-			const audioBuffer = audioContext.current.createBuffer(
-				1,
-				buffer.length,
-				audioContext.current.sampleRate
-			);
-			audioBuffer.copyToChannel(buffer, 0);
+        const audioBuffer = audioContext.current.createBuffer(
+          1,
+          buffer.length,
+          audioContext.current.sampleRate
+        );
+        audioBuffer.copyToChannel(buffer, 0);
 
-			source.current = audioContext.current.createBufferSource();
-			source.current.buffer = audioBuffer;
-			source.current.connect(audioContext.current.destination);
-			source.current.start(nextStartTime);
+        source.current = audioContext.current.createBufferSource();
+        source.current.buffer = audioBuffer;
+        source.current.connect(audioContext.current.destination);
 
-			nextStartTime += audioBuffer.duration;
+        // Ensure the source starts at the correct time
+        if (nextStartTime < audioContext.current.currentTime) {
+          nextStartTime = audioContext.current.currentTime;
+        }
 
-			result = await reader.read();
-			if (result.done) {
-				source.current.onended = () => {
-					stop();
-					callback();
-				};
-			}
-		}
-	}
+        source.current.start(nextStartTime);
+        nextStartTime += audioBuffer.duration;
 
-	function stop() {
-		audioContext.current?.close();
-		audioContext.current = null;
-		setIsPlaying(false);
-	}
+        result = await reader.read();
+      }
 
-	return {
-		isPlaying,
-		play,
-		stop,
-	};
+      // Handle end of stream
+      if (source.current) {
+        source.current.onended = () => {
+          stop();
+          callback();
+        };
+      }
+    } catch (error) {
+      console.error("Error during audio playback:", error);
+      stop();
+    }
+  }
+
+  function stop() {
+    if (source.current) {
+      source.current.stop();
+      source.current.disconnect();
+    }
+    audioContext.current?.close();
+    audioContext.current = null;
+    setIsPlaying(false);
+  }
+
+  return {
+    isPlaying,
+    play,
+    stop,
+  };
 }
