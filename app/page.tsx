@@ -39,8 +39,7 @@ export default function Home() {
 
       ort.env.wasm = {
         wasmPaths: {
-          "ort-wasm-simd-threaded.wasm":
-            "/ort-wasm-simd-threaded.wasm",
+          "ort-wasm-simd-threaded.wasm": "/ort-wasm-simd-threaded.wasm",
           "ort-wasm-simd.wasm": "/ort-wasm-simd.wasm",
           "ort-wasm.wasm": "/ort-wasm.wasm",
           "ort-wasm-threaded.wasm": "/ort-wasm-threaded.wasm",
@@ -86,9 +85,7 @@ export default function Home() {
     const transcript = decodeURIComponent(
       response.headers.get("X-Transcript") || ""
     );
-    const text = decodeURIComponent(
-      response.headers.get("X-Response") || ""
-    );
+    const text = decodeURIComponent(response.headers.get("X-Response") || "");
 
     if (!response.ok || !transcript || !text || !response.body) {
       if (response.status === 429) {
@@ -169,7 +166,7 @@ export default function Home() {
 
       <div className="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl text-balance min-h-28 space-y-4">
         {messages.length > 0 && (
-          <p>
+          <p style={{ userSelect: 'text' }}> {/* Ensure text can be selected */}
             {messages.at(-1)?.content}
             <span className="text-xs font-mono text-neutral-300 dark:text-neutral-700">
               {" "}
