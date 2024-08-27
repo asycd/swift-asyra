@@ -21,11 +21,11 @@ export function usePlayer() {
         data.set(leftover);
         data.set(result.value, leftover.length);
 
-        const length = Math.floor(data.length / 4) * 4; // Ensure data is a multiple of 4
+        const length = Math.floor(data.length / 4) * 4;
         const remainder = data.length % 4;
-        leftover = new Uint8Array(data.buffer, length, remainder);
-
         const buffer = new Float32Array(data.buffer, 0, length / 4);
+
+        leftover = new Uint8Array(data.buffer, length, remainder);
 
         const audioBuffer = audioContext.current.createBuffer(
           1,
@@ -34,34 +34,27 @@ export function usePlayer() {
         );
         audioBuffer.copyToChannel(buffer, 0);
 
-        const newSource = audioContext.current.createBufferSource();
-        newSource.buffer = audioBuffer;
-        newSource.connect(audioContext.current.destination);
+        source.current = audioContext.current.createBufferSource();
+        source.current.buffer = audioBuffer;
+        source.current.connect(audioContext.current.destination);
 
         // Ensure the source starts at the correct time
         if (nextStartTime < audioContext.current.currentTime) {
           nextStartTime = audioContext.current.currentTime;
         }
 
-        newSource.start(nextStartTime);
+        source.current.start(nextStartTime);
         nextStartTime += audioBuffer.duration;
-
-        newSource.onended = () => {
-          if (source.current === newSource) {
-            stop();
-            callback();
-          }
-        };
-
-        source.current = newSource; // Update source to the latest one
 
         result = await reader.read();
       }
 
       // Handle end of stream
-      if (!source.current || result.done) {
-        stop();
-        callback();
+      if (source.current) {
+        source.current.onended = () => {
+          stop();
+          callback();
+        };
       }
     } catch (error) {
       console.error("Error during audio playback:", error);
