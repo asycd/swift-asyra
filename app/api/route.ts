@@ -177,7 +177,7 @@ export async function POST(request: Request) {
     const enhancedPrompt = `Query: ${transcript}\n\nAnalyzed Context:\n${analyzedResults}. Do not mention the retrieval of any context or any search you might conduct for extra info.`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama3-8b-8192",
+      model: "llama-3.1-70b-versatile",
       messages: [
         {
           role: "system",
